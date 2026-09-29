@@ -43,12 +43,17 @@ def build_heart_pixels(t, width=72, height=72):
     y = np.linspace(-18.0, 18.0, height)
     xx, yy = np.meshgrid(x, y)
 
-    # Classic heart equation used as a pixel mask.
-    heart_mask = ((xx ** 2 + yy ** 2 - 1) ** 3 - xx ** 2 * yy ** 3 <= 0)
-
     pulse = 1.0 + 0.15 * np.sin(2.0 * np.pi * (t / T_BEAT))
     scale = 1.4 + 0.3 * prog(t, T_OUTLINE)
-    heart_shape = heart_mask & (np.sqrt((xx / (pulse * scale)) ** 2 + (yy / (pulse * scale)) ** 2) <= 1.18)
+    normalized_x = xx / (14.0 * pulse * scale)
+    normalized_y = yy / (14.0 * pulse * scale)
+
+    # Evaluate the classic equation in its unit-sized coordinate system.
+    heart_shape = (
+        (normalized_x ** 2 + normalized_y ** 2 - 1) ** 3
+        - normalized_x ** 2 * normalized_y ** 3
+        <= 0
+    )
 
     rows, cols = np.nonzero(heart_shape)
     if rows.size == 0:
@@ -56,8 +61,11 @@ def build_heart_pixels(t, width=72, height=72):
 
     x_coords = xx[rows, cols]
     y_coords = yy[rows, cols]
-    brightness = np.linspace(0.15, 1.0, len(x_coords))
-    brightness += 0.25 * np.sin((x_coords + y_coords) * 0.9 + t)
+    y_range = max(y_coords.max() - y_coords.min(), 1.0)
+    vertical_gradient = (y_coords - y_coords.min()) / y_range
+    highlight = 1.0 - np.clip(np.abs(normalized_x[rows, cols]), 0.0, 1.0)
+    brightness = 0.2 + 0.55 * vertical_gradient + 0.2 * highlight
+    brightness += 0.08 * np.sin((x_coords + y_coords) * 0.9 + t)
     brightness = np.clip(brightness, 0.0, 1.0)
     return x_coords, y_coords, brightness
 
@@ -99,16 +107,27 @@ def animate_heart():
 
         if x_coords.size > 0:
             colors = cmap(brightness)
-            sizes = 55 + 80 * brightness
-            ax.scatter(x_coords, y_coords, s=sizes, c=colors, marker="s", edgecolors="none")
+            ax.scatter(x_coords, y_coords, s=45, c=colors, marker="s", edgecolors="none")
 
-        outline = prog(time, T_OUTLINE)
-        outline_scale = 1.0 + 0.25 * outline
-        theta = np.linspace(0, 2 * np.pi, 600)
-        x_curve, y_curve = heart(theta)
-        x_curve *= outline_scale
-        y_curve *= outline_scale
-        ax.plot(x_curve, y_curve, color="#ffd2e6", linewidth=1.5, alpha=0.6)
+        border_x = np.linspace(-18.0, 18.0, 240)
+        border_y = np.linspace(-18.0, 18.0, 240)
+        border_xx, border_yy = np.meshgrid(border_x, border_y)
+        pulse = 1.0 + 0.15 * np.sin(2.0 * np.pi * (time / T_BEAT))
+        scale = 1.4 + 0.3 * prog(time, T_OUTLINE)
+        normalized_x = border_xx / (14.0 * pulse * scale)
+        normalized_y = border_yy / (14.0 * pulse * scale)
+        heart_boundary = (
+            (normalized_x ** 2 + normalized_y ** 2 - 1) ** 3
+            - normalized_x ** 2 * normalized_y ** 3
+        )
+        ax.contour(
+            border_xx,
+            border_yy,
+            heart_boundary,
+            levels=[0],
+            colors="black",
+            linewidths=2.0,
+        )
 
         if TEXT:
             t_text = prog(time, T_TEXT)
