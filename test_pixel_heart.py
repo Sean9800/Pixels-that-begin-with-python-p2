@@ -27,6 +27,12 @@ class PixelHeartTests(unittest.TestCase):
         self.assertEqual(len(xs), len(colors))
         self.assertGreater(len(xs), 0)
 
+    def test_build_heart_pixels_has_a_top_notch(self):
+        xs, ys, _ = module.build_heart_pixels(0.0, 200, 200)
+        top_y = ys.max()
+        top_x = xs[np.isclose(ys, top_y)]
+        self.assertLess(top_x.max() - top_x.min(), 18.0)
+
 
 if __name__ == "__main__":
     unittest.main()

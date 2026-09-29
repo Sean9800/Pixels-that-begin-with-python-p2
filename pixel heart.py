@@ -9,6 +9,7 @@ if "--save" in sys.argv:
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.path import Path
 
 TEXT = ""
 FPS = 20
@@ -38,24 +39,32 @@ def heart(t):
     return x, y
 
 
+def heart_outline(t, pulse=1.0, scale=1.0):
+    curve_t = np.linspace(0.0, 2.0 * np.pi, 2400, endpoint=False)
+    x = 16.0 * np.sin(curve_t) ** 3
+    y = 13.0 * np.cos(curve_t)
+    y -= 5.0 * np.cos(2.0 * curve_t)
+    y -= 2.0 * np.cos(3.0 * curve_t)
+    y -= np.cos(4.0 * curve_t)
+
+    x *= pulse * scale
+    y *= pulse * scale
+    return x, y
+
+
 def build_heart_pixels(t, width=72, height=72):
     x = np.linspace(-18.0, 18.0, width)
     y = np.linspace(-18.0, 18.0, height)
     xx, yy = np.meshgrid(x, y)
 
     pulse = 1.0 + 0.15 * np.sin(2.0 * np.pi * (t / T_BEAT))
-    scale = 1.4 + 0.3 * prog(t, T_OUTLINE)
-    normalized_x = xx / (14.0 * pulse * scale)
-    normalized_y = yy / (14.0 * pulse * scale)
+    scale = 1.0 + 0.2 * prog(t, T_OUTLINE)
+    heart_x, heart_y = heart_outline(t, pulse=pulse, scale=scale)
+    heart_path = Path(np.column_stack((heart_x, heart_y)), closed=True)
 
-    # Evaluate the classic equation in its unit-sized coordinate system.
-    heart_shape = (
-        (normalized_x ** 2 + normalized_y ** 2 - 1) ** 3
-        - normalized_x ** 2 * normalized_y ** 3
-        <= 0
-    )
-
-    rows, cols = np.nonzero(heart_shape)
+    points = np.column_stack((xx.ravel(), yy.ravel()))
+    inside = heart_path.contains_points(points).reshape(xx.shape)
+    rows, cols = np.nonzero(inside)
     if rows.size == 0:
         return np.array([], dtype=float), np.array([], dtype=float), np.array([], dtype=float)
 
@@ -63,7 +72,7 @@ def build_heart_pixels(t, width=72, height=72):
     y_coords = yy[rows, cols]
     y_range = max(y_coords.max() - y_coords.min(), 1.0)
     vertical_gradient = (y_coords - y_coords.min()) / y_range
-    highlight = 1.0 - np.clip(np.abs(normalized_x[rows, cols]), 0.0, 1.0)
+    highlight = 1.0 - np.clip(np.abs(x_coords) / 18.0, 0.0, 1.0)
     brightness = 0.2 + 0.55 * vertical_gradient + 0.2 * highlight
     brightness += 0.08 * np.sin((x_coords + y_coords) * 0.9 + t)
     brightness = np.clip(brightness, 0.0, 1.0)
@@ -103,45 +112,39 @@ def animate_heart():
         ax.axis("off")
 
         time = frame / FPS
-        x_coords, y_coords, brightness = build_heart_pixels(time)
-
-        if x_coords.size > 0:
-            colors = cmap(brightness)
-            ax.scatter(x_coords, y_coords, s=45, c=colors, marker="s", edgecolors="none")
-
-        border_x = np.linspace(-18.0, 18.0, 240)
-        border_y = np.linspace(-18.0, 18.0, 240)
-        border_xx, border_yy = np.meshgrid(border_x, border_y)
+        reveal = prog(time, (0.0, 4.0))
         pulse = 1.0 + 0.15 * np.sin(2.0 * np.pi * (time / T_BEAT))
-        scale = 1.4 + 0.3 * prog(time, T_OUTLINE)
-        normalized_x = border_xx / (14.0 * pulse * scale)
-        normalized_y = border_yy / (14.0 * pulse * scale)
-        heart_boundary = (
-            (normalized_x ** 2 + normalized_y ** 2 - 1) ** 3
-            - normalized_x ** 2 * normalized_y ** 3
+        scale = (0.12 + 0.88 * reveal) * (1.0 + 0.2 * prog(time, T_OUTLINE))
+        heart_x, heart_y = heart_outline(time, pulse=pulse, scale=scale)
+        ax.fill(
+            heart_x,
+            heart_y,
+            facecolor="#ff4d9e",
+            edgecolor="none",
+            alpha=0.15 + 0.85 * reveal,
         )
-        ax.contour(
-            border_xx,
-            border_yy,
-            heart_boundary,
-            levels=[0],
-            colors="black",
-            linewidths=2.0,
+        ax.plot(
+            heart_x,
+            heart_y,
+            color="black",
+            linewidth=2.0,
+            alpha=0.35 + 0.65 * reveal,
         )
 
-        if TEXT:
-            t_text = prog(time, T_TEXT)
-            txt = ax.text(
-                0,
-                -11.5,
-                TEXT,
-                ha="center",
-                va="center",
-                fontsize=18,
-                color=(1.0, 0.9, 0.96, 0.2 + 0.8 * t_text),
-                family="sans-serif",
-            )
-            txt.set_path_effects([])
+        love_text = "I love you"
+        t_text = prog(time, T_TEXT)
+        txt = ax.text(
+            0,
+            -1.5,
+            love_text,
+            ha="center",
+            va="center",
+            fontsize=11,
+            color=(0.0, 0.0, 0.0, 0.2 + 0.8 * t_text),
+            family="sans-serif",
+            weight="bold",
+        )
+        txt.set_path_effects([])
 
         return []
 
